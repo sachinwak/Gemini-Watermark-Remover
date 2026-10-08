@@ -57,13 +57,48 @@ let processedCount = 0;
 let activeBatchId = 0;
 let liveUpdateTimer = null;
 
-const presetState = {
-    mode: 'adaptive', // 'adaptive' or 'fixed-corner'
-    gain: 1.00,
-    sizeScale: 1.00,
-    positionX: 0,
-    positionY: 0
-};
+const LOCAL_STORAGE_KEY = 'gwr_classic_corner_settings';
+
+function loadSavedPresetState() {
+    const defaults = {
+        mode: 'fixed-corner',
+        gain: 1.00,
+        sizeScale: 1.00,
+        positionX: 0,
+        positionY: 0
+    };
+    try {
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            return {
+                mode: 'fixed-corner',
+                gain: typeof parsed.gain === 'number' && !isNaN(parsed.gain) ? parsed.gain : defaults.gain,
+                sizeScale: typeof parsed.sizeScale === 'number' && !isNaN(parsed.sizeScale) ? parsed.sizeScale : defaults.sizeScale,
+                positionX: typeof parsed.positionX === 'number' && !isNaN(parsed.positionX) ? parsed.positionX : defaults.positionX,
+                positionY: typeof parsed.positionY === 'number' && !isNaN(parsed.positionY) ? parsed.positionY : defaults.positionY
+            };
+        }
+    } catch (e) {
+        console.warn('Failed to load preset settings from localStorage:', e);
+    }
+    return defaults;
+}
+
+function savePresetState() {
+    try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+            gain: presetState.gain,
+            sizeScale: presetState.sizeScale,
+            positionX: presetState.positionX,
+            positionY: presetState.positionY
+        }));
+    } catch (e) {
+        console.warn('Failed to save preset settings to localStorage:', e);
+    }
+}
+
+const presetState = loadSavedPresetState();
 
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
@@ -181,33 +216,45 @@ async function init() {
 
 function setupPresetEventListeners() {
     if (strengthGainInput) {
+        strengthGainInput.value = presetState.gain;
+        if (strengthGainVal) strengthGainVal.textContent = presetState.gain.toFixed(2) + 'x';
         strengthGainInput.addEventListener('input', (e) => {
             presetState.gain = parseFloat(e.target.value);
             if (strengthGainVal) strengthGainVal.textContent = presetState.gain.toFixed(2) + 'x';
+            savePresetState();
             triggerLivePreviewUpdate();
         });
     }
 
     if (sizeScaleInput) {
+        sizeScaleInput.value = presetState.sizeScale;
+        if (sizeScaleVal) sizeScaleVal.textContent = presetState.sizeScale.toFixed(2) + 'x';
         sizeScaleInput.addEventListener('input', (e) => {
             presetState.sizeScale = parseFloat(e.target.value);
             if (sizeScaleVal) sizeScaleVal.textContent = presetState.sizeScale.toFixed(2) + 'x';
+            savePresetState();
             triggerLivePreviewUpdate();
         });
     }
 
     if (positionXInput) {
+        positionXInput.value = presetState.positionX;
+        if (positionXVal) positionXVal.textContent = presetState.positionX + 'px';
         positionXInput.addEventListener('input', (e) => {
             presetState.positionX = parseInt(e.target.value, 10);
             if (positionXVal) positionXVal.textContent = presetState.positionX + 'px';
+            savePresetState();
             triggerLivePreviewUpdate();
         });
     }
 
     if (positionYInput) {
+        positionYInput.value = presetState.positionY;
+        if (positionYVal) positionYVal.textContent = presetState.positionY + 'px';
         positionYInput.addEventListener('input', (e) => {
             presetState.positionY = parseInt(e.target.value, 10);
             if (positionYVal) positionYVal.textContent = presetState.positionY + 'px';
+            savePresetState();
             triggerLivePreviewUpdate();
         });
     }
@@ -265,18 +312,29 @@ async function reprocessSingleItem(item) {
     }
 }
 
+function getFixedCornerPosition(imgWidth, imgHeight, options = {}) {
+    const baseConfig = detectWatermarkConfig(imgWidth, imgHeight);
+    const sizeScale = Number.isFinite(options.sizeScale) ? options.sizeScale : 1.0;
+    const targetSize = Math.max(8, Math.round(baseConfig.logoSize * sizeScale));
+    const positionX = Number.isFinite(options.positionX) ? options.positionX : 0;
+    const positionY = Number.isFinite(options.positionY) ? options.positionY : 0;
+    const baseX = imgWidth - baseConfig.marginRight - targetSize;
+    const baseY = imgHeight - baseConfig.marginBottom - targetSize;
+    return {
+        x: Math.max(0, Math.min(imgWidth - targetSize, Math.round(baseX + positionX))),
+        y: Math.max(0, Math.min(imgHeight - targetSize, Math.round(baseY + positionY))),
+        width: targetSize,
+        height: targetSize
+    };
+}
+
 function updateWatermarkBoxOverlay(item) {
     if (!item?.originalImg || !originalImage) return;
 
-    const pos = item.processedMeta?.selectedCandidate?.position;
-    if (!pos) {
-        if (watermarkBoxOverlay) watermarkBoxOverlay.style.display = 'none';
-        if (zoomPreviewCard) zoomPreviewCard.style.display = 'none';
-        return;
-    }
-
     const imgW = item.originalImg.width;
     const imgH = item.originalImg.height;
+    const options = getCurrentOptions();
+    const pos = item.processedMeta?.selectedCandidate?.position || getFixedCornerPosition(imgW, imgH, options);
 
     const applyBox = () => {
         const rect = originalImage.getBoundingClientRect();
@@ -615,10 +673,10 @@ async function downloadAllAsZip() {
             const img = item.originalImg || await loadImage(item.file);
             const processed = await processImageWithBestPath(item.file, img, options);
             item.processedBlob = processed.blob;
-            const cleanName = item.name ? item.name.replace(/\.[^.]+$/, '') : `image_${i + 1}`;
+            const fileName = item.name || `image_${i + 1}.png`;
             const arrayBuffer = await processed.blob.arrayBuffer();
             zipFiles.push({
-                name: `unwatermarked_${cleanName}.png`,
+                name: fileName,
                 data: new Uint8Array(arrayBuffer)
             });
         }
@@ -918,7 +976,7 @@ async function copyImage(item, targetBtn = copyBtn) {
 function downloadImage(item) {
     const a = document.createElement('a');
     a.href = item.processedUrl;
-    a.download = `unwatermarked_${item.name ? item.name.replace(/\.[^.]+$/, '') : 'result'}.png`;
+    a.download = item.name || 'processed.png';
     a.click();
 }
 

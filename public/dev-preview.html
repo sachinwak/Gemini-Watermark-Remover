@@ -67,116 +67,115 @@
       </div>
     </section>
 
-    <!-- Classic Corner (Fixed) Parameter Controls Section -->
-    <section id="modelPresetSection" class="max-w-6xl mx-auto px-4 mb-6" style="display: none;">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">🔲 Classic Corner (Fixed) Settings</span>
-            <span class="text-xs text-gray-400">Settings adjusted on the first image apply to all downloads</span>
+    <section id="singlePreview" class="max-w-7xl mx-auto px-4" style="display: none;">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+        <!-- LEFT COLUMN (50% Ratio): Comparison Preview (Fixed Height) -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
+          <div class="bg-gray-50/80 px-4 py-3 border-b border-gray-200 flex justify-between items-center shrink-0">
+            <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              Comparison Preview
+            </h3>
+            <div class="flex gap-4">
+              <span id="originalInfo" class="text-xs text-gray-500 font-mono"></span>
+              <span id="processedInfo" class="text-xs text-primary font-mono" style="display: none;"></span>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button id="downloadZipBtn" type="button" class="py-2 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              Download ZIP
+
+          <div class="relative w-full flex-1 h-[360px] max-h-[360px] flex items-center justify-center bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgZmlsbD0iI2Y5ZmRmZCI+PHJlY3Qgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjZjJmMmYyIi8+PHJlY3QgeD0iMTAiIHk9IjEwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiNmMmYyZjIiLz48L3N2Zz4=')] select-none group p-3 overflow-hidden">
+            <div id="comparisonContainer" class="relative mx-auto w-fit max-w-full">
+              <img id="originalImage" class="block w-auto h-auto max-w-full max-h-[320px] object-contain object-right-bottom" draggable="false" />
+              <div id="processedOverlay" class="absolute top-0 left-0 h-full w-[50%] overflow-hidden border-r-[1.5px] border-white shadow-[1px_0_4px_rgba(0,0,0,0.15)] box-content z-10" style="display: none;">
+                <img id="processedImage" class="block h-full max-w-none object-contain object-right-bottom" draggable="false" />
+              </div>
+              <div id="watermarkBoxOverlay" class="absolute border-2 border-indigo-500 bg-indigo-500/20 pointer-events-none z-20 transition-all duration-75" style="display: none;"></div>
+              <div id="sliderHandle" class="absolute top-0 bottom-0 w-10 -ml-5 z-20 cursor-col-resize flex items-center justify-center group-hover:opacity-100 transition-opacity" style="left: 50%; display: none;">
+                <div class="absolute w-7 h-7 bg-white rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.2)] flex items-center justify-center border border-gray-100">
+                  <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 9l-3 3 3 3m8-6l3 3-3 3"></path></svg>
+                </div>
+              </div>
+              <div class="absolute top-3 left-3 bg-white/90 backdrop-blur text-gray-700 text-xs font-medium px-2 py-0.5 rounded shadow-sm border border-gray-200 pointer-events-none z-30">Processed</div>
+              <div class="absolute top-3 right-3 bg-white/90 backdrop-blur text-gray-700 text-xs font-medium px-2 py-0.5 rounded shadow-sm border border-gray-200 pointer-events-none z-30">Original</div>
+            </div>
+          </div>
+
+          <div class="p-4 bg-gray-50/50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3 shrink-0 mt-auto">
+            <button id="resetBtn" class="py-2 px-4 bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 active:scale-[0.98] rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm">
+              <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              <span>Change File</span>
             </button>
-          </div>
-        </div>
-
-        <!-- Sliders Panel for Classic Corner (Fixed) -->
-        <div id="fixedControlsPanel" class="pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
-            <div class="flex justify-between items-center text-xs font-bold text-gray-700">
-              <span>Strength (Gain)</span>
-              <span id="strengthGainVal" class="text-indigo-600 font-mono font-bold">1.00x</span>
-            </div>
-            <input id="strengthGainInput" type="range" min="0.10" max="2.50" step="0.05" value="1.00" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
-          </div>
-
-          <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
-            <div class="flex justify-between items-center text-xs font-bold text-gray-700">
-              <span>Size Scale</span>
-              <span id="sizeScaleVal" class="text-indigo-600 font-mono font-bold">1.00x</span>
-            </div>
-            <input id="sizeScaleInput" type="range" min="0.50" max="2.00" step="0.05" value="1.00" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
-          </div>
-
-          <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
-            <div class="flex justify-between items-center text-xs font-bold text-gray-700">
-              <span>Position X</span>
-              <span id="positionXVal" class="text-indigo-600 font-mono font-bold">0px</span>
-            </div>
-            <input id="positionXInput" type="range" min="-200" max="200" step="1" value="0" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
-          </div>
-
-          <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
-            <div class="flex justify-between items-center text-xs font-bold text-gray-700">
-              <span>Position Y</span>
-              <span id="positionYVal" class="text-indigo-600 font-mono font-bold">0px</span>
-            </div>
-            <input id="positionYInput" type="range" min="-200" max="200" step="1" value="0" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="singlePreview" class="max-w-6xl mx-auto px-4" style="display: none;">
-      <div class="flex flex-col md:flex-row gap-6">
-        <div class="flex-1">
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
-            <div class="bg-gray-50/80 px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
-              <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                Comparison Preview
-              </h3>
-              <div class="flex gap-4">
-                <span id="originalInfo" class="text-xs text-gray-500 font-mono"></span>
-                <span id="processedInfo" class="text-xs text-primary font-mono" style="display: none;"></span>
-              </div>
-            </div>
-
-            <div class="relative w-full flex-1 flex items-center justify-center bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgZmlsbD0iI2Y5ZmRmZCI+PHJlY3Qgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjZjJmMmYyIi8+PHJlY3QgeD0iMTAiIHk9IjEwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiNmMmYyZjIiLz48L3N2Zz4=')] select-none group min-h-[400px]">
-              <div id="comparisonContainer" class="relative mx-auto w-fit max-w-full">
-                <img id="originalImage" class="block w-auto h-auto max-w-full max-h-[65vh] object-contain object-right-bottom" draggable="false" />
-                <div id="processedOverlay" class="absolute top-0 left-0 h-full w-[50%] overflow-hidden border-r-[1.5px] border-white shadow-[1px_0_4px_rgba(0,0,0,0.15)] box-content z-10" style="display: none;">
-                  <img id="processedImage" class="block h-full max-w-none object-contain object-right-bottom" draggable="false" />
-                </div>
-                <div id="watermarkBoxOverlay" class="absolute border-2 border-indigo-500 bg-indigo-500/20 pointer-events-none z-20 transition-all duration-75" style="display: none;"></div>
-                <div id="zoomPreviewCard" class="absolute top-3 right-3 z-30 bg-white/95 backdrop-blur border border-gray-200 rounded-lg p-1.5 shadow-md flex flex-col items-center pointer-events-none" style="display: none;">
-                  <canvas id="zoomCanvas" width="120" height="120" class="rounded border border-gray-200 block"></canvas>
-                  <span class="text-[10px] font-bold text-gray-600 mt-1 uppercase tracking-wider">Watermark Zoom</span>
-                </div>
-                <div id="sliderHandle" class="absolute top-0 bottom-0 w-10 -ml-5 z-20 cursor-col-resize flex items-center justify-center group-hover:opacity-100 transition-opacity" style="left: 50%; display: none;">
-                  <div class="absolute w-7 h-7 bg-white rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.2)] flex items-center justify-center border border-gray-100">
-                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 9l-3 3 3 3m8-6l3 3-3 3"></path></svg>
-                  </div>
-                </div>
-                <div class="absolute top-3 left-3 bg-white/90 backdrop-blur text-gray-700 text-xs font-medium px-2 py-0.5 rounded shadow-sm border border-gray-200 pointer-events-none z-30">Processed</div>
-                <div class="absolute top-3 right-14 bg-white/90 backdrop-blur text-gray-700 text-xs font-medium px-2 py-0.5 rounded shadow-sm border border-gray-200 pointer-events-none z-30">Original</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="w-full md:w-64 lg:w-72 flex-shrink-0">
-          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sticky top-20">
-            <h4 class="text-sm font-semibold text-gray-900 mb-4">Actions</h4>
-            <div class="space-y-2.5">
-              <button id="copyBtn" class="w-full py-2 px-4 bg-primary hover:bg-primary-hover active:scale-[0.98] text-white rounded-lg text-sm font-medium transition-transform duration-100 flex items-center justify-center gap-2 shadow-sm" style="display: none;">
+            <div class="flex gap-2">
+              <button id="copyBtn" class="py-2 px-4 bg-primary hover:bg-primary-hover active:scale-[0.98] text-white rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm" style="display: none;">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-1 10H8m4-3H8m1.5 6H8"></path></svg>
                 <span>Copy Result</span>
               </button>
-
-              <button id="downloadBtn" class="w-full py-2 px-4 bg-gray-900 hover:bg-black active:scale-[0.98] text-white rounded-lg text-sm font-medium transition-transform duration-100 flex items-center justify-center gap-2 shadow-sm" style="display: none;">
+              <button id="downloadBtn" class="py-2 px-4 bg-gray-900 hover:bg-black active:scale-[0.98] text-white rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm" style="display: none;">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                 <span>Download Result</span>
               </button>
-
-              <button id="resetBtn" class="w-full py-2 px-4 bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 active:scale-[0.98] rounded-lg text-sm font-medium transition-transform duration-100 flex items-center justify-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                <span>Change File</span>
-              </button>
             </div>
-            <div id="statusMessage" class="mt-4 text-xs text-gray-500 min-h-[1.25rem]"></div>
+          </div>
+          <div id="statusMessage" class="px-4 pb-3 text-xs text-gray-500 min-h-[1.25rem]"></div>
+        </div>
+
+        <!-- RIGHT COLUMN (50% Ratio): Classic Corner Settings & Zoomed Cleaned Panel -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col gap-4 h-full">
+          <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div>
+              <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                🔲 Classic Corner (Fixed) Settings
+              </h3>
+              <p class="text-xs text-gray-500 mt-0.5">Settings set here will apply to all images upon download.</p>
+            </div>
+            <button id="downloadZipBtn" type="button" class="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              <span>Download ZIP</span>
+            </button>
+          </div>
+
+          <!-- ZOOMED CLEANED Card (Exact design matching user screenshot) -->
+          <div id="zoomPreviewCard" class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex flex-col items-center justify-center gap-2.5" style="display: none;">
+            <div class="flex items-center gap-1.5 text-emerald-600">
+              <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span class="text-xs font-bold uppercase tracking-wider text-emerald-600">ZOOMED CLEANED</span>
+            </div>
+            <div class="relative bg-gray-900/5 border border-gray-200 rounded-2xl p-1 shadow-inner overflow-hidden">
+              <canvas id="zoomCanvas" width="220" height="220" class="rounded-xl block bg-gray-100 object-cover"></canvas>
+            </div>
+          </div>
+
+          <!-- 4 Adjustment Sliders -->
+          <div id="fixedControlsPanel" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-auto">
+            <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
+              <div class="flex justify-between items-center text-xs font-bold text-gray-700">
+                <span>Strength (Gain)</span>
+                <span id="strengthGainVal" class="text-indigo-600 font-mono font-bold">1.00x</span>
+              </div>
+              <input id="strengthGainInput" type="range" min="0.10" max="2.50" step="0.05" value="1.00" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
+            </div>
+
+            <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
+              <div class="flex justify-between items-center text-xs font-bold text-gray-700">
+                <span>Size Scale</span>
+                <span id="sizeScaleVal" class="text-indigo-600 font-mono font-bold">1.00x</span>
+              </div>
+              <input id="sizeScaleInput" type="range" min="0.50" max="2.00" step="0.05" value="1.00" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
+            </div>
+
+            <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
+              <div class="flex justify-between items-center text-xs font-bold text-gray-700">
+                <span>Position X</span>
+                <span id="positionXVal" class="text-indigo-600 font-mono font-bold">0px</span>
+              </div>
+              <input id="positionXInput" type="range" min="-200" max="200" step="1" value="0" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
+            </div>
+
+            <div class="flex flex-col gap-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80">
+              <div class="flex justify-between items-center text-xs font-bold text-gray-700">
+                <span>Position Y</span>
+                <span id="positionYVal" class="text-indigo-600 font-mono font-bold">0px</span>
+              </div>
+              <input id="positionYInput" type="range" min="-200" max="200" step="1" value="0" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-gray-200 rounded-lg appearance-none">
+            </div>
           </div>
         </div>
       </div>
