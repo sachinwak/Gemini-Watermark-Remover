@@ -12,7 +12,12 @@ import {
     inspectGeminiVideoFile,
     removeGeminiVideoWatermark
 } from './video/videoExport.js';
-import { isReferenceGeminiVideoSize } from './video/videoWatermarkCatalog.js';
+import {
+    getFixedCornerVideoPosition,
+    isReferenceGeminiVideoSize
+} from './video/videoWatermarkCatalog.js';
+import { getVideoAlphaMap } from './video/videoWatermarkDetector.js';
+import { removeWatermark } from './core/blendModes.js';
 import {
     getAutomaticVideoPresetConfig,
     getRelocatedReviewPresetConfig
@@ -58,6 +63,49 @@ const state = {
     syncingPlayback: false
 };
 
+const LOCAL_STORAGE_KEY = 'gwr_classic_corner_settings';
+
+function loadSavedPresetState() {
+    const defaults = {
+        mode: 'fixed-corner',
+        gain: 1.00,
+        sizeScale: 1.00,
+        positionX: 0,
+        positionY: 0
+    };
+    try {
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            return {
+                mode: 'fixed-corner',
+                gain: typeof parsed.gain === 'number' && !isNaN(parsed.gain) ? parsed.gain : defaults.gain,
+                sizeScale: typeof parsed.sizeScale === 'number' && !isNaN(parsed.sizeScale) ? parsed.sizeScale : defaults.sizeScale,
+                positionX: typeof parsed.positionX === 'number' && !isNaN(parsed.positionX) ? parsed.positionX : defaults.positionX,
+                positionY: typeof parsed.positionY === 'number' && !isNaN(parsed.positionY) ? parsed.positionY : defaults.positionY
+            };
+        }
+    } catch (e) {
+        console.warn('Failed to load preset settings from localStorage:', e);
+    }
+    return defaults;
+}
+
+function savePresetState() {
+    try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+            gain: presetState.gain,
+            sizeScale: presetState.sizeScale,
+            positionX: presetState.positionX,
+            positionY: presetState.positionY
+        }));
+    } catch (e) {
+        console.warn('Failed to save preset settings to localStorage:', e);
+    }
+}
+
+const presetState = loadSavedPresetState();
+
 const allenkFdncnnRuntimePromises = new Map();
 
 const els = {
@@ -71,6 +119,20 @@ const els = {
     timeLabel: $('timeLabel'),
     originalVideo: $('originalVideo'),
     processedVideo: $('processedVideo'),
+    previewCanvas: $('previewCanvas'),
+    watermarkBoxOverlay: $('watermarkBoxOverlay'),
+    zoomPreviewCard: $('zoomPreviewCard'),
+    zoomCanvas: $('zoomCanvas'),
+    fixedCornerPanel: $('fixedCornerPanel'),
+    fixedExportBtn: $('fixedExportBtn'),
+    strengthGainInput: $('strengthGainInput'),
+    strengthGainVal: $('strengthGainVal'),
+    sizeScaleInput: $('sizeScaleInput'),
+    sizeScaleVal: $('sizeScaleVal'),
+    positionXInput: $('positionXInput'),
+    positionXVal: $('positionXVal'),
+    positionYInput: $('positionYInput'),
+    positionYVal: $('positionYVal'),
     originalEmpty: $('originalEmpty'),
     processedEmpty: $('processedEmpty'),
     metadata: $('metadata'),
@@ -321,10 +383,221 @@ function formatPlaybackTime(value) {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+let offscreenCanvas = null;
+let liveUpdateTimer = null;
+
+function cloneImageData(imageData) {
+    const data = new Uint8ClampedArray(imageData.data);
+    if (typeof ImageData !== 'undefined') {
+        return new ImageData(data, imageData.width, imageData.height);
+    }
+    return { width: imageData.width, height: imageData.height, data };
+}
+
+function getContainedVideoRect(videoEl) {
+    if (!videoEl || !videoEl.parentElement) return null;
+    const paneRect = videoEl.parentElement.getBoundingClientRect();
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    if (!vw || !vh || !paneRect.width || !paneRect.height) return null;
+    const videoAspect = vw / vh;
+    const paneAspect = paneRect.width / paneRect.height;
+    let renderW, renderH, offsetX, offsetY;
+    if (paneAspect > videoAspect) {
+        renderH = paneRect.height;
+        renderW = renderH * videoAspect;
+        offsetX = (paneRect.width - renderW) / 2;
+        offsetY = 0;
+    } else {
+        renderW = paneRect.width;
+        renderH = renderW / videoAspect;
+        offsetX = 0;
+        offsetY = (paneRect.height - renderH) / 2;
+    }
+    return {
+        left: offsetX,
+        top: offsetY,
+        width: renderW,
+        height: renderH,
+        scaleX: renderW / vw,
+        scaleY: renderH / vh
+    };
+}
+
+function updateWatermarkBoxOverlay(pos, vw, vh) {
+    if (!els.watermarkBoxOverlay || !els.originalVideo) return;
+    const r = getContainedVideoRect(els.originalVideo);
+    if (!r) {
+        els.watermarkBoxOverlay.style.display = 'none';
+        return;
+    }
+    const bLeft = r.left + pos.x * r.scaleX;
+    const bTop = r.top + pos.y * r.scaleY;
+    const bW = pos.width * r.scaleX;
+    const bH = pos.height * r.scaleY;
+
+    els.watermarkBoxOverlay.style.left = `${bLeft}px`;
+    els.watermarkBoxOverlay.style.top = `${bTop}px`;
+    els.watermarkBoxOverlay.style.width = `${bW}px`;
+    els.watermarkBoxOverlay.style.height = `${bH}px`;
+    els.watermarkBoxOverlay.style.display = 'block';
+}
+
+function renderLiveVideoPreview() {
+    if (!els.originalVideo) return;
+    const vw = els.originalVideo.videoWidth || state.metadata?.width;
+    const vh = els.originalVideo.videoHeight || state.metadata?.height;
+    if (!vw || !vh) return;
+
+    const pos = getFixedCornerVideoPosition(vw, vh, presetState);
+
+    if (!offscreenCanvas) {
+        offscreenCanvas = document.createElement('canvas');
+    }
+    if (offscreenCanvas.width !== vw || offscreenCanvas.height !== vh) {
+        offscreenCanvas.width = vw;
+        offscreenCanvas.height = vh;
+    }
+    const ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+    try {
+        ctx.drawImage(els.originalVideo, 0, 0, vw, vh);
+    } catch {
+        return;
+    }
+
+    const alphaMap = getVideoAlphaMap(pos.width);
+    const roi = ctx.getImageData(pos.x, pos.y, pos.width, pos.height);
+    const candidate = cloneImageData(roi);
+    removeWatermark(candidate, alphaMap, {
+        x: 0,
+        y: 0,
+        width: pos.width,
+        height: pos.height
+    }, { alphaGain: presetState.gain });
+    ctx.putImageData(candidate, pos.x, pos.y);
+
+    // 1. Draw to previewCanvas in the compare pane
+    if (els.previewCanvas && !state.processedUrl) {
+        if (els.previewCanvas.width !== vw || els.previewCanvas.height !== vh) {
+            els.previewCanvas.width = vw;
+            els.previewCanvas.height = vh;
+        }
+        const pCtx = els.previewCanvas.getContext('2d');
+        pCtx.drawImage(offscreenCanvas, 0, 0);
+        els.previewCanvas.style.display = 'block';
+        if (els.processedVideo) els.processedVideo.style.display = 'none';
+        if (els.processedEmpty) els.processedEmpty.hidden = true;
+        if (els.afterBadge) {
+            els.afterBadge.hidden = false;
+            els.afterBadge.textContent = 'After (Preview)';
+        }
+    }
+
+    // 2. Draw to zoomCanvas in zoomPreviewCard
+    if (els.zoomPreviewCard && els.zoomCanvas) {
+        els.zoomPreviewCard.style.display = 'flex';
+        const zCtx = els.zoomCanvas.getContext('2d');
+        const pad = 16;
+        const cropX = Math.max(0, pos.x - pad);
+        const cropY = Math.max(0, pos.y - pad);
+        const cropW = Math.min(vw - cropX, pos.width + pad * 2);
+        const cropH = Math.min(vh - cropY, pos.height + pad * 2);
+
+        zCtx.clearRect(0, 0, els.zoomCanvas.width, els.zoomCanvas.height);
+        zCtx.drawImage(offscreenCanvas, cropX, cropY, cropW, cropH, 0, 0, els.zoomCanvas.width, els.zoomCanvas.height);
+
+        const scaleZoomX = els.zoomCanvas.width / cropW;
+        const scaleZoomY = els.zoomCanvas.height / cropH;
+        const zBoxX = (pos.x - cropX) * scaleZoomX;
+        const zBoxY = (pos.y - cropY) * scaleZoomY;
+        const zBoxW = pos.width * scaleZoomX;
+        const zBoxH = pos.height * scaleZoomY;
+
+        zCtx.strokeStyle = '#10b981';
+        zCtx.lineWidth = 2;
+        zCtx.strokeRect(zBoxX, zBoxY, zBoxW, zBoxH);
+    }
+
+    // 3. Update watermark box overlay on the Before pane
+    updateWatermarkBoxOverlay(pos, vw, vh);
+}
+
+function triggerLivePreviewUpdate() {
+    clearTimeout(liveUpdateTimer);
+    liveUpdateTimer = setTimeout(() => {
+        renderLiveVideoPreview();
+    }, 16);
+}
+
+function handlePresetChange() {
+    savePresetState();
+    if (state.processedUrl) {
+        URL.revokeObjectURL(state.processedUrl);
+        state.processedUrl = null;
+        els.processedVideo.removeAttribute('src');
+        els.processedVideo.load();
+        els.processedVideo.style.display = 'none';
+        els.downloadBtn.removeAttribute('href');
+        els.downloadBtn.removeAttribute('download');
+        updateButtons();
+        updateCompareMode();
+    }
+    triggerLivePreviewUpdate();
+}
+
+function setupPresetEventListeners() {
+    if (els.strengthGainInput) {
+        els.strengthGainInput.value = presetState.gain;
+        if (els.strengthGainVal) els.strengthGainVal.textContent = presetState.gain.toFixed(2) + 'x';
+        els.strengthGainInput.addEventListener('input', (e) => {
+            presetState.gain = parseFloat(e.target.value);
+            if (els.strengthGainVal) els.strengthGainVal.textContent = presetState.gain.toFixed(2) + 'x';
+            handlePresetChange();
+        });
+    }
+
+    if (els.sizeScaleInput) {
+        els.sizeScaleInput.value = presetState.sizeScale;
+        if (els.sizeScaleVal) els.sizeScaleVal.textContent = presetState.sizeScale.toFixed(2) + 'x';
+        els.sizeScaleInput.addEventListener('input', (e) => {
+            presetState.sizeScale = parseFloat(e.target.value);
+            if (els.sizeScaleVal) els.sizeScaleVal.textContent = presetState.sizeScale.toFixed(2) + 'x';
+            handlePresetChange();
+        });
+    }
+
+    if (els.positionXInput) {
+        els.positionXInput.value = presetState.positionX;
+        if (els.positionXVal) els.positionXVal.textContent = presetState.positionX + 'px';
+        els.positionXInput.addEventListener('input', (e) => {
+            presetState.positionX = parseInt(e.target.value, 10);
+            if (els.positionXVal) els.positionXVal.textContent = presetState.positionX + 'px';
+            handlePresetChange();
+        });
+    }
+
+    if (els.positionYInput) {
+        els.positionYInput.value = presetState.positionY;
+        if (els.positionYVal) els.positionYVal.textContent = presetState.positionY + 'px';
+        els.positionYInput.addEventListener('input', (e) => {
+            presetState.positionY = parseInt(e.target.value, 10);
+            if (els.positionYVal) els.positionYVal.textContent = presetState.positionY + 'px';
+            handlePresetChange();
+        });
+    }
+
+    if (els.fixedExportBtn) {
+        els.fixedExportBtn.addEventListener('click', () => runExport());
+    }
+}
+
 function updateButtons() {
     const hasFile = Boolean(state.file);
     els.detectBtn.disabled = !hasFile || state.running || batch.processing;
     els.processBtn.disabled = !hasFile || state.running || batch.processing;
+    if (els.fixedExportBtn) {
+        els.fixedExportBtn.disabled = !hasFile || state.running || batch.processing;
+    }
     const canDownload = Boolean(state.processedUrl) && !state.running;
     els.downloadBtn.setAttribute('aria-disabled', canDownload ? 'false' : 'true');
     els.downloadBtn.tabIndex = canDownload ? 0 : -1;
@@ -361,8 +634,12 @@ function updatePlaybackControls() {
 
 function updateCompareMode() {
     const hasAfter = hasPlayableProcessed();
-    els.afterBadge.hidden = !hasAfter;
-    els.processedEmpty.hidden = hasAfter;
+    const hasFile = Boolean(state.file);
+    els.afterBadge.hidden = !hasAfter && !hasFile;
+    if (els.afterBadge) {
+        els.afterBadge.textContent = hasAfter ? 'After' : 'After (Preview)';
+    }
+    els.processedEmpty.hidden = hasAfter || hasFile;
 }
 
 function syncProcessedToOriginal({ force = false } = {}) {
@@ -419,6 +696,9 @@ function seekComparison(value) {
     els.originalVideo.currentTime = currentTime;
     syncProcessedToOriginal({ force: true });
     updatePlaybackControls();
+    if (!state.processedUrl) {
+        renderLiveVideoPreview();
+    }
 }
 
 function renderAutoPresetSummary(preset = null) {
@@ -526,6 +806,7 @@ async function setFile(file) {
         state.metadata = metadata;
         renderMetadata(metadata);
         applyAutomaticPreset(null, metadata, { silent: true });
+        renderLiveVideoPreview();
         setStatus('Video loaded, click export to remove watermark with AI.');
     } catch (error) {
         console.error(error);
@@ -632,7 +913,47 @@ async function runExport(signal) {
     try {
         signal.throwIfAborted();
         let detectionPayload = state.detection ? { metadata: state.metadata, detection: state.detection } : null;
-        if (!detectionPayload) {
+        if (!detectionPayload && state.metadata) {
+            const pos = getFixedCornerVideoPosition(state.metadata.width, state.metadata.height, presetState);
+            const alphaMap = getVideoAlphaMap(pos.width);
+            const fixedDetection = {
+                watermarkKind: 'diamond',
+                isConfident: true,
+                isFixedCorner: true,
+                position: pos,
+                alphaMap,
+                alphaSeed: { seedGain: presetState.gain },
+                candidate: {
+                    id: 'fixed-corner',
+                    label: `Classic Corner (Fixed) ${pos.width}px`,
+                    x: pos.x,
+                    y: pos.y,
+                    size: pos.width,
+                    width: pos.width,
+                    height: pos.height
+                },
+                summary: {
+                    frameCount: 1,
+                    minConfidence: 0,
+                    best: {
+                        candidateId: 'fixed-corner',
+                        label: 'Classic Corner (Fixed)',
+                        meanConfidence: 1.0,
+                        maxConfidence: 1.0
+                    },
+                    candidates: [{
+                        candidateId: 'fixed-corner',
+                        label: 'Classic Corner (Fixed)',
+                        x: pos.x,
+                        y: pos.y,
+                        size: pos.width,
+                        meanConfidence: 1.0
+                    }]
+                }
+            };
+            detectionPayload = { metadata: state.metadata, detection: fixedDetection };
+            applyAutomaticPreset(fixedDetection, state.metadata, { silent: true });
+        } else if (!detectionPayload) {
             setProgress(0.04, 'Detecting');
             setStatus('Detecting watermark candidates...');
             await yieldToBrowserFrame();
@@ -651,6 +972,13 @@ async function runExport(signal) {
             detectionPayload = { metadata: detected.metadata, detection: detected.detection };
             applyAutomaticPreset(detected.detection, detected.metadata, { silent: true });
         } else {
+            const pos = getFixedCornerVideoPosition(state.metadata.width, state.metadata.height, presetState);
+            const alphaMap = getVideoAlphaMap(pos.width);
+            detectionPayload.detection.position = pos;
+            detectionPayload.detection.alphaMap = alphaMap;
+            detectionPayload.detection.isFixedCorner = true;
+            detectionPayload.detection.isConfident = true;
+            detectionPayload.detection.alphaSeed = { seedGain: presetState.gain };
             applyAutomaticPreset(detectionPayload.detection, detectionPayload.metadata, { silent: true });
         }
         applyDebugControlOverrides();
@@ -669,7 +997,12 @@ async function runExport(signal) {
 
         const result = await removeGeminiVideoWatermark(state.file, {
             signal,
-            alphaGain: Number(els.alphaGain.value) || DEFAULT_ALPHA_GAIN,
+            presetMode: 'fixed-corner',
+            gain: presetState.gain,
+            alphaGain: presetState.gain,
+            sizeScale: presetState.sizeScale,
+            positionX: presetState.positionX,
+            positionY: presetState.positionY,
             adaptiveAlpha: els.adaptiveAlpha.checked,
             highQualityCleanup: els.highQualityCleanup.checked,
             denoiseBackend,
@@ -681,7 +1014,7 @@ async function runExport(signal) {
             ...debugAlphaOptions,
             sampleCount: Number(els.sampleCount.value) || DEFAULT_SAMPLE_COUNT,
             detection: detectionPayload,
-            allowLowConfidence: els.allowLowConfidence.checked,
+            allowLowConfidence: true,
             allenkFdncnnRuntime,
             allenkFdncnnSigma,
             allenkFdncnnPadding,
@@ -727,6 +1060,8 @@ async function runExport(signal) {
         state.processedUrl = URL.createObjectURL(result.blob);
         els.processedVideo.src = state.processedUrl;
         els.processedVideo.load();
+        els.processedVideo.style.display = 'block';
+        if (els.previewCanvas) els.previewCanvas.style.display = 'none';
         els.processedEmpty.hidden = true;
         updateCompareMode();
         syncProcessedToOriginal({ force: true });
@@ -886,6 +1221,20 @@ function reset() {
     els.originalVideo.load();
     els.processedVideo.removeAttribute('src');
     els.processedVideo.load();
+    if (els.previewCanvas) {
+        els.previewCanvas.style.display = 'none';
+        const pCtx = els.previewCanvas.getContext('2d');
+        pCtx?.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+    }
+    if (els.processedVideo) {
+        els.processedVideo.style.display = 'block';
+    }
+    if (els.zoomPreviewCard) {
+        els.zoomPreviewCard.style.display = 'none';
+    }
+    if (els.watermarkBoxOverlay) {
+        els.watermarkBoxOverlay.style.display = 'none';
+    }
     els.downloadBtn.removeAttribute('href');
     els.downloadBtn.removeAttribute('download');
     els.originalEmpty.hidden = false;
@@ -994,6 +1343,7 @@ function applyRelocatedReviewPreset() {
 }
 
 function setupEvents() {
+    setupPresetEventListeners();
     els.dropzone.addEventListener('click', () => els.fileInput.click());
     els.dropzone.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -1048,9 +1398,19 @@ function setupEvents() {
     });
     els.originalVideo.addEventListener('loadedmetadata', () => {
         updatePlaybackControls();
+        renderLiveVideoPreview();
+    });
+    els.originalVideo.addEventListener('loadeddata', () => {
+        renderLiveVideoPreview();
+    });
+    els.originalVideo.addEventListener('seeked', () => {
+        if (!state.processedUrl) renderLiveVideoPreview();
     });
     els.originalVideo.addEventListener('timeupdate', () => {
-        if (!els.originalVideo.paused) syncProcessedToOriginal();
+        if (!els.originalVideo.paused) {
+            syncProcessedToOriginal();
+            if (!state.processedUrl) renderLiveVideoPreview();
+        }
         updatePlaybackControls();
     });
     els.originalVideo.addEventListener('pause', () => {
@@ -1063,6 +1423,16 @@ function setupEvents() {
     els.processedVideo.addEventListener('loadedmetadata', () => {
         syncProcessedToOriginal({ force: true });
         updateCompareMode();
+    });
+    window.addEventListener('resize', () => {
+        if (state.file && els.originalVideo) {
+            const vw = els.originalVideo.videoWidth || state.metadata?.width;
+            const vh = els.originalVideo.videoHeight || state.metadata?.height;
+            if (vw && vh) {
+                const pos = getFixedCornerVideoPosition(vw, vh, presetState);
+                updateWatermarkBoxOverlay(pos, vw, vh);
+            }
+        }
     });
     window.addEventListener('beforeunload', cleanupUrls);
 }

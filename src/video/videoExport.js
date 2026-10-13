@@ -724,12 +724,15 @@ function refineAlphaGain({
 
 function processWatermarkRoi(ctx, detection, options) {
     const { position, alphaMap } = detection;
-    const frameScore = scoreVideoWatermarkFrame(
-        ctx.getImageData(position.x, position.y, position.width, position.height),
-        { x: 0, y: 0, width: position.width, height: position.height },
-        alphaMap
-    );
-    const shouldSkip = frameScore.confidence < options.lowConfidenceThreshold;
+    const isFixedCorner = detection?.isFixedCorner === true || options.presetMode === 'fixed-corner';
+    const frameScore = isFixedCorner
+        ? { confidence: 1.0 }
+        : scoreVideoWatermarkFrame(
+            ctx.getImageData(position.x, position.y, position.width, position.height),
+            { x: 0, y: 0, width: position.width, height: position.height },
+            alphaMap
+        );
+    const shouldSkip = !isFixedCorner && (frameScore.confidence < options.lowConfidenceThreshold);
 
     if (shouldSkip) {
         return {
@@ -741,17 +744,19 @@ function processWatermarkRoi(ctx, detection, options) {
     }
 
     const roi = ctx.getImageData(position.x, position.y, position.width, position.height);
-    const useAdaptiveAlpha = options.adaptiveAlpha && frameScore.confidence >= options.highConfidenceThreshold;
-    const alphaGain = useAdaptiveAlpha
-        ? refineAlphaGain({
-            ctx,
-            originalRoi: roi,
-            position,
-            alphaMap,
-            seedGain: options.seedAlphaGain,
-            previousGain: options.previousAlphaGain
-        })
-        : options.seedAlphaGain;
+    const useAdaptiveAlpha = !isFixedCorner && options.adaptiveAlpha && frameScore.confidence >= options.highConfidenceThreshold;
+    const alphaGain = isFixedCorner
+        ? (options.seedAlphaGain ?? options.alphaGain ?? options.gain ?? DEFAULT_ALPHA_GAIN)
+        : (useAdaptiveAlpha
+            ? refineAlphaGain({
+                ctx,
+                originalRoi: roi,
+                position,
+                alphaMap,
+                seedGain: options.seedAlphaGain,
+                previousGain: options.previousAlphaGain
+            })
+            : options.seedAlphaGain);
     const processed = applyRoiRemoval(roi, alphaMap, alphaGain);
     ctx.putImageData(processed, position.x, position.y);
     applyVideoResidualCleanup(ctx, position, alphaMap, {
@@ -799,12 +804,15 @@ async function processWatermarkRoiAsync(ctx, detection, options) {
     }
 
     const { position, alphaMap } = detection;
-    const frameScore = scoreVideoWatermarkFrame(
-        ctx.getImageData(position.x, position.y, position.width, position.height),
-        { x: 0, y: 0, width: position.width, height: position.height },
-        alphaMap
-    );
-    const shouldSkip = frameScore.confidence < options.lowConfidenceThreshold;
+    const isFixedCorner = detection?.isFixedCorner === true || options.presetMode === 'fixed-corner';
+    const frameScore = isFixedCorner
+        ? { confidence: 1.0 }
+        : scoreVideoWatermarkFrame(
+            ctx.getImageData(position.x, position.y, position.width, position.height),
+            { x: 0, y: 0, width: position.width, height: position.height },
+            alphaMap
+        );
+    const shouldSkip = !isFixedCorner && (frameScore.confidence < options.lowConfidenceThreshold);
 
     if (shouldSkip) {
         return {
@@ -816,17 +824,19 @@ async function processWatermarkRoiAsync(ctx, detection, options) {
     }
 
     const roi = ctx.getImageData(position.x, position.y, position.width, position.height);
-    const useAdaptiveAlpha = options.adaptiveAlpha && frameScore.confidence >= options.highConfidenceThreshold;
-    const alphaGain = useAdaptiveAlpha
-        ? refineAlphaGain({
-            ctx,
-            originalRoi: roi,
-            position,
-            alphaMap,
-            seedGain: options.seedAlphaGain,
-            previousGain: options.previousAlphaGain
-        })
-        : options.seedAlphaGain;
+    const useAdaptiveAlpha = !isFixedCorner && options.adaptiveAlpha && frameScore.confidence >= options.highConfidenceThreshold;
+    const alphaGain = isFixedCorner
+        ? (options.seedAlphaGain ?? options.alphaGain ?? options.gain ?? DEFAULT_ALPHA_GAIN)
+        : (useAdaptiveAlpha
+            ? refineAlphaGain({
+                ctx,
+                originalRoi: roi,
+                position,
+                alphaMap,
+                seedGain: options.seedAlphaGain,
+                previousGain: options.previousAlphaGain
+            })
+            : options.seedAlphaGain);
     const processed = applyRoiRemoval(roi, alphaMap, alphaGain);
     ctx.putImageData(processed, position.x, position.y);
     const cleanupResult = await applyVideoResidualCleanupAsync(ctx, position, alphaMap, {
@@ -939,7 +949,7 @@ export async function removeGeminiVideoWatermark(file, options = {}) {
         : requestedAlphaGain;
     onProgress({ phase: 'detect', progress: 1, metadata, detection });
 
-    if (!detection.isConfident && options.allowLowConfidence !== true) {
+    if (!detection.isConfident && options.allowLowConfidence !== true && !detection.isFixedCorner && options.presetMode !== 'fixed-corner') {
         throw new Error('视频水印检测置信度偏低，已停止导出。可打开低置信导出后重试。');
     }
 
@@ -1019,6 +1029,7 @@ export async function removeGeminiVideoWatermark(file, options = {}) {
                 sample.draw(ctx, 0, 0, metadata.width, metadata.height);
                 const frameResult = await processVideoWatermarkFrame(ctx, detection, trackStates, {
                     seedAlphaGain: alphaGain,
+                    presetMode: options.presetMode,
                     adaptiveAlpha,
                     residualCleanupStrength,
                     highQualityCleanup,

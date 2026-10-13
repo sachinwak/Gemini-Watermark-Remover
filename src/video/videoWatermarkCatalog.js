@@ -253,3 +253,32 @@ function getExplicitCandidates(width, height) {
 
     return [];
 }
+
+/**
+ * Calculate fixed corner watermark position for a video based on its resolution and options
+ * @param {number} width - Video width
+ * @param {number} height - Video height
+ * @param {Object} options - { sizeScale, positionX, positionY }
+ * @returns {Object} { x, y, width, height, baseCandidate }
+ */
+export function getFixedCornerVideoPosition(width, height, options = {}) {
+    const candidates = resolveVideoWatermarkCandidates(width, height);
+    const baseCandidate = candidates[0] || {
+        size: 72,
+        marginRight: 108,
+        marginBottom: 108
+    };
+    const sizeScale = Number.isFinite(options.sizeScale) ? options.sizeScale : 1.0;
+    const targetSize = Math.max(8, Math.round(baseCandidate.size * sizeScale));
+    const positionX = Number.isFinite(options.positionX) ? options.positionX : 0;
+    const positionY = Number.isFinite(options.positionY) ? options.positionY : 0;
+    const baseX = width - baseCandidate.marginRight - targetSize;
+    const baseY = height - baseCandidate.marginBottom - targetSize;
+    return {
+        x: Math.max(0, Math.min(width - targetSize, Math.round(baseX + positionX))),
+        y: Math.max(0, Math.min(height - targetSize, Math.round(baseY + positionY))),
+        width: targetSize,
+        height: targetSize,
+        baseCandidate
+    };
+}

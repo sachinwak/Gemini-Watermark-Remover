@@ -179,7 +179,124 @@
       object-fit: contain;
       object-position: center center;
     }
+    .preview-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+    }
+    .watermark-box-overlay {
+      position: absolute;
+      border: 2px solid #6366f1;
+      background: rgba(99, 102, 241, 0.2);
+      pointer-events: none;
+      z-index: 20;
+      border-radius: 2px;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+      transition: all 75ms ease;
+    }
     .compare-pane[hidden], .badge[hidden], .empty[hidden] { display: none; }
+
+    /* Classic Corner (Fixed) Settings */
+    .fixed-corner-panel {
+      margin-top: 20px;
+    }
+    .fixed-corner-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .fixed-corner-content {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 20px;
+      align-items: center;
+    }
+    @media (max-width: 768px) {
+      .fixed-corner-content {
+        grid-template-columns: 1fr;
+      }
+    }
+    .zoom-preview-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .zoom-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #10b981;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .zoom-canvas-wrap {
+      background: rgba(15, 23, 42, 0.05);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      overflow: hidden;
+    }
+    .zoom-canvas {
+      display: block;
+      border-radius: var(--radius-sm);
+      background: #f1f5f9;
+      width: 200px;
+      height: 200px;
+    }
+    .fixed-sliders-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 640px) {
+      .fixed-sliders-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .slider-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(248, 250, 252, 0.8);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+    }
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .slider-val {
+      color: #4f46e5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    .slider-card input[type="range"] {
+      width: 100%;
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
+      accent-color: #4f46e5;
+      cursor: pointer;
+    }
 
     .badge {
       position: absolute;
@@ -510,11 +627,13 @@
           <div id="comparePlayer" class="compare-player">
             <div class="compare-pane">
               <video id="originalVideo" playsinline preload="metadata"></video>
+              <div id="watermarkBoxOverlay" class="watermark-box-overlay" style="display: none;"></div>
               <span class="badge">Before</span>
               <div id="originalEmpty" class="empty">Select or drop images / videos</div>
             </div>
             <div class="compare-pane">
               <video id="processedVideo" playsinline preload="metadata" muted></video>
+              <canvas id="previewCanvas" class="preview-canvas" style="display: none;"></canvas>
               <span id="afterBadge" class="badge" hidden>After</span>
               <div id="processedEmpty" class="empty">Right-side comparison will show when export completes</div>
             </div>
@@ -523,6 +642,72 @@
             <button id="playPauseBtn" class="play-toggle" type="button" data-playing="false" aria-label="Play" disabled></button>
             <input id="scrubber" type="range" min="0" max="1000" value="0" aria-label="Playback progress" disabled>
             <span id="timeLabel" class="time-label">0:00</span>
+          </div>
+        </div>
+
+        <!-- Classic Corner (Fixed) Settings Panel -->
+        <div class="panel fixed-corner-panel" id="fixedCornerPanel">
+          <div class="panel-head">
+            <div>
+              <span style="font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+                🔲 Classic Corner (Fixed) Settings
+              </span>
+              <p style="margin: 2px 0 0; font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">
+                Settings set here will apply to all videos upon export.
+              </p>
+            </div>
+            <button id="fixedExportBtn" class="primary" type="button" style="height: 32px; font-size: 0.85rem; padding: 0 14px; background: var(--accent); border: none; color: white;">
+              Export Video
+            </button>
+          </div>
+          <div class="fixed-corner-body">
+            <div class="fixed-corner-content">
+              <!-- ZOOMED CLEANED Card -->
+              <div id="zoomPreviewCard" class="zoom-preview-card" style="display: none;">
+                <div class="zoom-badge">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span>ZOOMED CLEANED</span>
+                </div>
+                <div class="zoom-canvas-wrap">
+                  <canvas id="zoomCanvas" width="200" height="200" class="zoom-canvas"></canvas>
+                </div>
+              </div>
+
+              <!-- 4 Adjustment Sliders -->
+              <div id="fixedControlsPanel" class="fixed-sliders-grid">
+                <div class="slider-card">
+                  <div class="slider-header">
+                    <span>Strength (Gain)</span>
+                    <span id="strengthGainVal" class="slider-val">1.00x</span>
+                  </div>
+                  <input id="strengthGainInput" type="range" min="0.10" max="2.50" step="0.01" value="1.00">
+                </div>
+
+                <div class="slider-card">
+                  <div class="slider-header">
+                    <span>Size Scale</span>
+                    <span id="sizeScaleVal" class="slider-val">1.00x</span>
+                  </div>
+                  <input id="sizeScaleInput" type="range" min="0.50" max="2.00" step="0.01" value="1.00">
+                </div>
+
+                <div class="slider-card">
+                  <div class="slider-header">
+                    <span>Position X</span>
+                    <span id="positionXVal" class="slider-val">0px</span>
+                  </div>
+                  <input id="positionXInput" type="range" min="-200" max="200" step="1" value="0">
+                </div>
+
+                <div class="slider-card">
+                  <div class="slider-header">
+                    <span>Position Y</span>
+                    <span id="positionYVal" class="slider-val">0px</span>
+                  </div>
+                  <input id="positionYInput" type="range" min="-200" max="200" step="1" value="0">
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
